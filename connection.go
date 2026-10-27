@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strconv"
 	"time"
 )
 
@@ -254,6 +255,8 @@ func openFirebirdsqlConn(ctx context.Context, dsn *firebirdDsn, dbOp func(*wireP
 	if err != nil {
 		return nil, err
 	}
+	dialect, _ := strconv.Atoi(dsn.options["sql_dialect"]) // parseDSN validates and defaults this option
+	wp.sqlDialect = int32(dialect)
 	var fc *firebirdsqlConn
 	err = wp.withContextDeadline(ctx, func() error {
 		var err error
@@ -272,6 +275,8 @@ func openFirebirdsqlConnWithWire(dsn *firebirdDsn, dbOp func(*wireProtocol) erro
 	if err != nil {
 		return nil, err
 	}
+	dialect, _ := strconv.Atoi(dsn.options["sql_dialect"]) // parseDSN validates and defaults this option
+	wp.sqlDialect = int32(dialect)
 	return handshakeFirebirdsqlConn(wp, dsn, dbOp)
 }
 

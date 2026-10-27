@@ -29,7 +29,8 @@ import (
 )
 
 // ExecImmediate executes SQL without preparing a statement (op_execute_immediate).
-// Reach via sql.Conn.Raw. Uses dialect 3 and does not send OpExecute-style trailers.
+// Reach via sql.Conn.Raw. Uses the configured SQL dialect and does not send
+// OpExecute-style trailers.
 func (fc *firebirdsqlConn) ExecImmediate(ctx context.Context, sql string) error {
 	if fc == nil || fc.wp == nil || fc.tx == nil {
 		return driver.ErrBadConn
@@ -66,7 +67,7 @@ func (p *wireProtocol) opExecuteImmediate(transHandle int32, sql string) error {
 	p.packInt(op_execute_immediate)
 	p.packInt(transHandle)
 	p.packInt(0) // statement
-	p.packInt(3) // dialect
+	p.packInt(p.sqlDialect)
 	p.packString(sql)
 	p.packBytes(nil) // items
 	p.packInt(0)     // buffer length

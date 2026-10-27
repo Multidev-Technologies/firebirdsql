@@ -95,6 +95,7 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 		"os_user":              "",
 		"page_size":            "4096",
 		"role":                 "",
+		"sql_dialect":          "3",
 		"timezone":             "",
 		"wire_crypt":           "true",
 		"wire_crypt_plugin":    defaultWireCryptPlugins,
@@ -128,6 +129,9 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 	// Fail fast on an invalid page_size before dialing.
 	if _, err := parsePageSize(dsn.options["page_size"]); err != nil {
 		return nil, err
+	}
+	if v := dsn.options["sql_dialect"]; v != "1" && v != "3" {
+		return nil, fmt.Errorf("firebirdsql: sql_dialect must be 1 or 3, got %q", v)
 	}
 
 	// Fail fast on an invalid wire_crypt policy before dialing.
