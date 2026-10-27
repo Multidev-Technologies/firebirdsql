@@ -39,6 +39,7 @@ type firebirdsqlConn struct {
 	dsn                *firebirdDsn
 	columnNameToLower  bool
 	sqlTypeNames       bool
+	noneTextFallback   string
 	isAutocommit       bool
 	explicitTxOnly     bool
 	txNoWait           bool
@@ -326,6 +327,7 @@ func handshakeFirebirdsqlConn(wp *wireProtocol, dsn *firebirdDsn, dbOp func(*wir
 		dsn:               dsn,
 		columnNameToLower: columnNameToLower,
 		sqlTypeNames:      sqlTypeNames,
+		noneTextFallback:  dsn.options["none_text_fallback"],
 		isAutocommit:      !explicitTxOnly,
 		explicitTxOnly:    explicitTxOnly,
 		txNoWait:          txNoWait,

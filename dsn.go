@@ -105,6 +105,7 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 		"wire_compress":        "false",
 		"max_inline_blob_size": "65536",
 		"max_blob_cache_size":  "10485760",
+		"none_text_fallback":   "",
 		// Cancel hard-drop: close the socket when a canceled statement's
 		// read has not returned after cancel_hard_drop_grace ms (op_cancel
 		// raise cannot interrupt waits inside an executing statement).
@@ -140,6 +141,11 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 		if v := dsn.options[key]; v != "true" && v != "false" {
 			return nil, fmt.Errorf("firebirdsql: %s must be true or false, got %q", key, v)
 		}
+	}
+	switch strings.ToUpper(dsn.options["none_text_fallback"]) {
+	case "", "WIN1252", "WIN1250", "ISO8859_1":
+	default:
+		return nil, fmt.Errorf("firebirdsql: none_text_fallback must be empty or one of WIN1252, WIN1250, ISO8859_1, got %q", dsn.options["none_text_fallback"])
 	}
 
 	// Fail fast on an invalid wire_crypt policy before dialing.

@@ -111,6 +111,47 @@ func TestColumnScanTextBlobUnderSQLTypeNamesProcedure(t *testing.T) {
 	}
 }
 
+func TestColumnScanNoneTextFallback(t *testing.T) {
+	for _, sqlTypeNames := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sql_type_names=%t", sqlTypeNames), func(t *testing.T) {
+			wp := &wireProtocol{charset: "NONE"}
+			rows := &firebirdsqlRows{
+				ctx: context.Background(),
+				stmt: &firebirdsqlStmt{
+					stmtType: isc_info_sql_stmt_select,
+					fc: &firebirdsqlConn{
+						wp:               wp,
+						sqlTypeNames:     sqlTypeNames,
+						noneTextFallback: "WIN1252",
+					},
+					resultXsqlda: []xSQLVAR{{sqltype: SQL_TYPE_VARYING}},
+				},
+				currentChunk:    [][]driver.Value{{[]byte{'c', 'a', 'f', 0xE9}}},
+				currentChunkIdx: -1,
+			}
+			require.NoError(t, rows.NextRow())
+			var got string
+			require.NoError(t, rows.ScanColumn(driver.ScanContext{}, 0, &got))
+			require.Equal(t, "café", got)
+		})
+
+		t.Run(fmt.Sprintf("text_blob_sql_type_names=%t", sqlTypeNames), func(t *testing.T) {
+			blobID := []byte{1, 0, 0, 0, 0, 0, 0, 0}
+			var f acceptFrame
+			columnScanBlobFrames(&f, []byte{'c', 'a', 'f', 0xE9})
+			rows := cannedColumnScanBlobRows(f.bytes(), [][]driver.Value{{blobID}}, 1, false)
+			rows.stmt.fc.sqlTypeNames = sqlTypeNames
+			rows.stmt.fc.noneTextFallback = "WIN1252"
+			rows.stmt.fc.wp.charset = "NONE"
+
+			require.NoError(t, rows.NextRow())
+			var got string
+			require.NoError(t, rows.ScanColumn(driver.ScanContext{}, 0, &got))
+			require.Equal(t, "café", got)
+		})
+	}
+}
+
 func TestColumnScanProcedureBlobMaterialization(t *testing.T) {
 	id := []byte{3, 0, 0, 0, 0, 0, 0, 0}
 	source := [][]driver.Value{{append([]byte(nil), id...)}}

@@ -31,6 +31,9 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/charmap"
 )
 
 type firebirdsqlRows struct {
@@ -147,11 +150,20 @@ func (rows *firebirdsqlRows) Next(dest []driver.Value) (err error) {
 						return
 					}
 					x := rows.stmt.resultXsqlda[i]
-					if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames && rows.stmt.fc.wp != nil && x.sqlsubtype == 1 {
-						if s, ok := decodeCharset(blob, rows.stmt.fc.wp.charset); ok {
-							dest[i] = s
+					if x.sqlsubtype == 1 && rows.stmt.fc != nil {
+						if rows.stmt.fc.noneTextFallback != "" && rows.stmt.fc.wp != nil && strings.EqualFold(rows.stmt.fc.wp.charset, "NONE") {
+							dest[i], err = applyNoneTextFallback(blob, rows.stmt.fc.noneTextFallback)
+							if err != nil {
+								return err
+							}
+						} else if rows.stmt.fc.sqlTypeNames && rows.stmt.fc.wp != nil {
+							if s, ok := decodeCharset(blob, rows.stmt.fc.wp.charset); ok {
+								dest[i] = s
+							} else {
+								dest[i] = string(blob)
+							}
 						} else {
-							dest[i] = string(blob)
+							dest[i] = blob
 						}
 					} else {
 						dest[i] = blob
@@ -254,7 +266,12 @@ func (rows *firebirdsqlRows) Next(dest []driver.Value) (err error) {
 			}
 			if x.sqlsubtype == 1 {
 				charset := rows.stmt.fc.wp.charset
-				if s, ok := decodeCharset(blob, charset); ok {
+				if rows.stmt.fc.noneTextFallback != "" && strings.EqualFold(charset, "NONE") {
+					dest[i], err = applyNoneTextFallback(blob, rows.stmt.fc.noneTextFallback)
+					if err != nil {
+						return err
+					}
+				} else if s, ok := decodeCharset(blob, charset); ok {
 					dest[i] = s
 				} else {
 					dest[i] = string(blob)
@@ -320,7 +337,7 @@ func (rows *firebirdsqlRows) ColumnTypeScanType(index int) reflect.Type {
 
 func (rows *firebirdsqlRows) sqlTypeNamesValue(x xSQLVAR, value driver.Value) (driver.Value, error) {
 	fc := rows.stmt.fc
-	if fc == nil || !fc.sqlTypeNames || fc.wp == nil || !strings.EqualFold(fc.wp.charset, "NONE") || x.sqlsubtype == 1 {
+	if fc == nil || fc.wp == nil || !strings.EqualFold(fc.wp.charset, "NONE") || x.sqlsubtype == 1 {
 		return value, nil
 	}
 	if x.sqltype != SQL_TYPE_TEXT && x.sqltype != SQL_TYPE_VARYING {
@@ -328,6 +345,9 @@ func (rows *firebirdsqlRows) sqlTypeNamesValue(x xSQLVAR, value driver.Value) (d
 	}
 	if value == nil {
 		return nil, nil
+	}
+	if !fc.sqlTypeNames && fc.noneTextFallback == "" {
+		return value, nil
 	}
 	var raw []byte
 	switch v := value.(type) {
@@ -338,9 +358,52 @@ func (rows *firebirdsqlRows) sqlTypeNamesValue(x xSQLVAR, value driver.Value) (d
 	default:
 		return value, nil
 	}
-	decoded, err := x.valueSQLTypeNames(raw, fc.wp.timezone, fc.wp.charset)
-	if err != nil {
-		return nil, err
+	if fc.sqlTypeNames {
+		value, err := x.valueSQLTypeNames(raw, fc.wp.timezone, fc.wp.charset)
+		if err != nil {
+			return nil, err
+		}
+		if fc.noneTextFallback == "" {
+			return value, nil
+		}
+		raw = []byte(value.(string))
 	}
-	return decoded, nil
+	if x.sqltype == SQL_TYPE_TEXT {
+		raw = []byte(strings.TrimRight(string(raw), " "))
+	}
+	// The fetch/execute response containing these buffered values has been fully
+	// consumed before Next converts them. A charset error therefore does not
+	// desynchronize or poison the connection; the caller can close the cursor and
+	// reuse the wire.
+	return applyNoneTextFallback(raw, fc.noneTextFallback)
+}
+
+// applyNoneTextFallback keeps valid UTF-8 intact and decodes other bytes with
+// the selected single-byte charset. Undefined bytes are rejected rather than
+// replaced with U+FFFD.
+func applyNoneTextFallback(raw []byte, fallback string) (string, error) {
+	if utf8.Valid(raw) {
+		return string(raw), nil
+	}
+	var table *charmap.Charmap
+	switch strings.ToUpper(fallback) {
+	case "WIN1252":
+		table = charmap.Windows1252
+	case "WIN1250":
+		table = charmap.Windows1250
+	case "ISO8859_1":
+		table = charmap.ISO8859_1
+	default:
+		return "", fmt.Errorf("firebirdsql: unsupported none_text_fallback %q", fallback)
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	for _, c := range raw {
+		r := table.DecodeByte(c)
+		if r == utf8.RuneError {
+			return "", fmt.Errorf("firebirdsql: byte 0x%02X is undefined in %s", c, fallback)
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), nil
 }
