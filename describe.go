@@ -3,6 +3,7 @@ package firebirdsql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -46,7 +47,7 @@ func DescribeStatement(ctx context.Context, conn *sql.Conn, query string) (State
 func (fc *firebirdsqlConn) describeStatement(ctx context.Context, query string) (StatementDescriptor, error) {
 	var out StatementDescriptor
 	err := fc.wp.withContextDeadline(ctx, func() (err error) {
-		if fc.tx == nil || fc.tx.needBegin {
+		if describeNeedsOwnTransaction(fc.tx) {
 			previous := fc.tx
 			own, beginErr := newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED_RO, false, true)
 			if beginErr != nil {
@@ -54,15 +55,25 @@ func (fc *firebirdsqlConn) describeStatement(ctx context.Context, query string) 
 			}
 			fc.tx = own
 			defer func() {
-				commitErr := own.fc.wp.opCommit(own.transHandle)
-				if commitErr == nil {
-					_, _, _, commitErr = own.fc.wp.opResponse()
-				}
-				delete(fc.transactionSet, own)
-				fc.tx = previous
-				if err == nil {
-					err = commitErr
-				}
+				err = fc.finishDescribeTransaction(own, previous, err, func() error {
+					if commitErr := own.fc.wp.opCommit(own.transHandle); commitErr != nil {
+						return commitErr
+					}
+					_, _, _, commitErr := own.fc.wp.opResponse()
+					if commitErr == nil {
+						own.fc.wp.clearInlineBlobCache(own.transHandle)
+					}
+					return commitErr
+				}, func() error {
+					if rollbackErr := own.fc.wp.opRollback(own.transHandle); rollbackErr != nil {
+						return rollbackErr
+					}
+					_, _, _, rollbackErr := own.fc.wp.opResponseTimeout(abandonReadTimeout)
+					if rollbackErr == nil {
+						own.fc.wp.clearInlineBlobCache(own.transHandle)
+					}
+					return rollbackErr
+				})
 			}()
 		}
 
@@ -97,6 +108,23 @@ func (fc *firebirdsqlConn) describeStatement(ctx context.Context, query string) 
 		return nil
 	})
 	return out, err
+}
+
+func describeNeedsOwnTransaction(tx *firebirdsqlTx) bool {
+	return tx == nil || tx.needBegin || tx.isAutocommit
+}
+
+func (fc *firebirdsqlConn) finishDescribeTransaction(own, previous *firebirdsqlTx, primaryErr error, commit, rollback func() error) error {
+	commitErr := commit()
+	var rollbackErr error
+	if commitErr != nil {
+		rollbackErr = rollback()
+	}
+	if commitErr == nil || rollbackErr == nil {
+		delete(fc.transactionSet, own)
+	}
+	fc.tx = previous
+	return errors.Join(primaryErr, commitErr, rollbackErr)
 }
 
 func statementKind(stmtType int32) (string, bool) {

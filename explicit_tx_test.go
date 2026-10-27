@@ -45,6 +45,21 @@ func TestTxNoWaitAppliesToEveryLevel(t *testing.T) {
 	}
 }
 
+func TestTxNoWaitAppliesToSerializable(t *testing.T) {
+	level, err := txIsolationLevelWith(driver.TxOptions{Isolation: driver.IsolationLevel(sql.LevelSerializable)}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpb, err := tpbForIsolationLevel(level)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{byte(isc_tpb_version3), byte(isc_tpb_write), byte(isc_tpb_nowait), byte(isc_tpb_consistency)}
+	if !bytes.Equal(tpb, want) {
+		t.Fatalf("serializable NOWAIT tpb = %v, want %v", tpb, want)
+	}
+}
+
 func TestSnapshotNoWaitConstant(t *testing.T) {
 	level, err := txIsolationLevelWith(driver.TxOptions{Isolation: LevelSnapshotNoWait}, false)
 	if err != nil {

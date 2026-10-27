@@ -102,6 +102,9 @@ func txIsolationLevelWith(opts driver.TxOptions, noWait bool) (int, error) {
 		}
 		return ISOLATION_LEVEL_REPEATABLE_READ, nil
 	case sql.LevelSerializable:
+		if noWait {
+			return ISOLATION_LEVEL_SERIALIZABLE_NOWAIT, nil
+		}
 		return ISOLATION_LEVEL_SERIALIZABLE, nil
 	default:
 	}

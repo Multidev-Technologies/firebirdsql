@@ -115,18 +115,21 @@ func TestSQLTypeNamesRowsMetadata(t *testing.T) {
 
 func TestSQLTypeNamesCharacterLengthUsesAttachmentCharset(t *testing.T) {
 	for _, tt := range []struct {
+		name    string
 		charset string
+		x       xSQLVAR
 		want    int64
 	}{
-		{charset: "NONE", want: 20},
-		{charset: "UTF8", want: 5},
+		{name: "NONE text", charset: "NONE", x: xSQLVAR{sqltype: SQL_TYPE_TEXT, sqllen: 20}, want: 20},
+		{name: "UTF8 text", charset: "UTF8", x: xSQLVAR{sqltype: SQL_TYPE_TEXT, sqllen: 20}, want: 5},
+		{name: "UTF8 OCTETS", charset: "UTF8", x: xSQLVAR{sqltype: SQL_TYPE_TEXT, sqllen: 8, sqlsubtype: 1}, want: 8},
 	} {
-		t.Run(tt.charset, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			wp := &wireProtocol{charset: tt.charset}
 			wp.charsetLen()
 			rows := &firebirdsqlRows{stmt: &firebirdsqlStmt{
 				fc:           &firebirdsqlConn{sqlTypeNames: true, wp: wp},
-				resultXsqlda: []xSQLVAR{{sqltype: SQL_TYPE_TEXT, sqllen: 20}},
+				resultXsqlda: []xSQLVAR{tt.x},
 			}}
 			if got, ok := rows.ColumnTypeLength(0); !ok || got != tt.want {
 				t.Fatalf("%s CHAR length = %d, %v; want %d, true", tt.charset, got, ok, tt.want)
@@ -139,7 +142,7 @@ func TestDefaultTypeMetadataIsUnchanged(t *testing.T) {
 	wp := &wireProtocol{charset: "UTF8"}
 	wp.charsetLen()
 	rows := &firebirdsqlRows{stmt: &firebirdsqlStmt{
-		fc:           &firebirdsqlConn{wp: wp},
+		fc: &firebirdsqlConn{wp: wp},
 		resultXsqlda: []xSQLVAR{
 			{sqltype: SQL_TYPE_TEXT, sqllen: 10},
 			{sqltype: SQL_TYPE_TEXT, sqllen: 8, sqlsubtype: 1},

@@ -303,7 +303,7 @@ func (rows *firebirdsqlRows) ColumnTypeLength(index int) (length int64, ok bool)
 	x := rows.stmt.resultXsqlda[index]
 	if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames && (x.sqltype == SQL_TYPE_TEXT || x.sqltype == SQL_TYPE_VARYING) {
 		bytesPerChar := 1
-		if rows.stmt.fc.wp != nil {
+		if x.sqlsubtype != 1 && rows.stmt.fc.wp != nil {
 			bytesPerChar = rows.stmt.fc.wp.charsetByteLen
 		}
 		if bytesPerChar < 1 {
