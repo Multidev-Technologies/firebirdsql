@@ -167,6 +167,44 @@ func (x *xSQLVAR) typename() string {
 	return xsqlvarTypeName[x.sqltype]
 }
 
+func (x *xSQLVAR) sqlTypeName() string {
+	switch x.sqltype {
+	case SQL_TYPE_TEXT:
+		return "CHAR"
+	case SQL_TYPE_VARYING:
+		return "VARCHAR"
+	case SQL_TYPE_SHORT, SQL_TYPE_LONG, SQL_TYPE_INT64:
+		if x.sqlscale != 0 {
+			return "NUMERIC"
+		}
+		return map[int]string{
+			SQL_TYPE_SHORT: "SMALLINT",
+			SQL_TYPE_LONG:  "INTEGER",
+			SQL_TYPE_INT64: "BIGINT",
+		}[x.sqltype]
+	case SQL_TYPE_FLOAT:
+		return "FLOAT"
+	case SQL_TYPE_DOUBLE:
+		return "DOUBLE PRECISION"
+	case SQL_TYPE_BLOB:
+		if x.sqlsubtype == 1 {
+			return "BLOB SUB_TYPE TEXT"
+		}
+		return fmt.Sprintf("BLOB SUB_TYPE %d", x.sqlsubtype)
+	}
+	return x.typename()
+}
+
+func (x *xSQLVAR) sqlScanType() reflect.Type {
+	switch {
+	case (x.sqltype == SQL_TYPE_TEXT || x.sqltype == SQL_TYPE_VARYING) && x.sqlsubtype == 1:
+		return reflect.TypeOf([]byte(nil))
+	case x.sqltype == SQL_TYPE_BLOB && x.sqlsubtype == 1:
+		return reflect.TypeOf("")
+	}
+	return x.scantype()
+}
+
 func (x *xSQLVAR) scantype() reflect.Type {
 	switch x.sqltype {
 	case SQL_TYPE_TEXT:
@@ -447,6 +485,20 @@ func (x *xSQLVAR) value(raw_value []byte, timezone string, charset string) (v in
 		v, err = decimal128ToString(raw_value)
 	}
 	return
+}
+
+// valueSQLTypeNames preserves the raw bytes of NONE text as a Go string while
+// applying the InterBase CHAR right-trimming convention.
+func (x *xSQLVAR) valueSQLTypeNames(raw []byte, timezone, charset string) (any, error) {
+	if strings.EqualFold(charset, "NONE") && x.sqlsubtype != 1 {
+		switch x.sqltype {
+		case SQL_TYPE_TEXT:
+			return strings.TrimRight(string(raw), " "), nil
+		case SQL_TYPE_VARYING:
+			return string(raw), nil
+		}
+	}
+	return x.value(raw, timezone, charset)
 }
 
 func calcBlr(xsqlda []xSQLVAR) []byte {

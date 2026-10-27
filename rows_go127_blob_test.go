@@ -97,6 +97,20 @@ func TestColumnScanBlobMaterialization(t *testing.T) {
 	}
 }
 
+func TestColumnScanTextBlobUnderSQLTypeNamesProcedure(t *testing.T) {
+	blobID := []byte{1, 0, 0, 0, 0, 0, 0, 0}
+	var f acceptFrame
+	columnScanBlobFrames(&f, []byte{'c', 0xE9})
+	rows := cannedColumnScanBlobRows(f.bytes(), [][]driver.Value{{blobID}}, 1, true)
+	rows.stmt.fc.sqlTypeNames = true
+	rows.stmt.fc.wp.charset = "NONE"
+
+	require.NoError(t, rows.NextRow())
+	if got := rows.scanRow[0]; got != "c\xE9" {
+		t.Fatalf("text BLOB value = %q (%T), want raw c\\xE9 string", got, got)
+	}
+}
+
 func TestColumnScanProcedureBlobMaterialization(t *testing.T) {
 	id := []byte{3, 0, 0, 0, 0, 0, 0, 0}
 	source := [][]driver.Value{{append([]byte(nil), id...)}}

@@ -146,9 +146,21 @@ func (rows *firebirdsqlRows) Next(dest []driver.Value) (err error) {
 						}
 						return
 					}
-					dest[i] = blob
+					x := rows.stmt.resultXsqlda[i]
+					if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames && rows.stmt.fc.wp != nil && x.sqlsubtype == 1 {
+						if s, ok := decodeCharset(blob, rows.stmt.fc.wp.charset); ok {
+							dest[i] = s
+						} else {
+							dest[i] = string(blob)
+						}
+					} else {
+						dest[i] = blob
+					}
 				} else {
-					dest[i] = v
+					dest[i], err = rows.sqlTypeNamesValue(rows.stmt.resultXsqlda[i], v)
+					if err != nil {
+						return
+					}
 				}
 			}
 			rows.result = nil
@@ -252,7 +264,10 @@ func (rows *firebirdsqlRows) Next(dest []driver.Value) (err error) {
 			}
 
 		} else {
-			dest[i] = v
+			dest[i], err = rows.sqlTypeNamesValue(x, v)
+			if err != nil {
+				return
+			}
 		}
 	}
 
@@ -260,11 +275,26 @@ func (rows *firebirdsqlRows) Next(dest []driver.Value) (err error) {
 }
 
 func (rows *firebirdsqlRows) ColumnTypeDatabaseTypeName(index int) string {
-	return rows.stmt.resultXsqlda[index].typename()
+	x := rows.stmt.resultXsqlda[index]
+	if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames {
+		return x.sqlTypeName()
+	}
+	return x.typename()
 }
 
 func (rows *firebirdsqlRows) ColumnTypeLength(index int) (length int64, ok bool) {
-	return int64(rows.stmt.resultXsqlda[index].displayLength()), true
+	x := rows.stmt.resultXsqlda[index]
+	if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames && (x.sqltype == SQL_TYPE_TEXT || x.sqltype == SQL_TYPE_VARYING) {
+		bytesPerChar := 1
+		if rows.stmt.fc.wp != nil {
+			bytesPerChar = rows.stmt.fc.wp.charsetByteLen
+		}
+		if bytesPerChar < 1 {
+			bytesPerChar = 1
+		}
+		return int64(x.sqllen / bytesPerChar), true
+	}
+	return int64(x.displayLength()), true
 }
 
 func (rows *firebirdsqlRows) ColumnTypeNullable(index int) (nullable bool, ok bool) {
@@ -272,9 +302,45 @@ func (rows *firebirdsqlRows) ColumnTypeNullable(index int) (nullable bool, ok bo
 }
 
 func (rows *firebirdsqlRows) ColumnTypePrecisionScale(index int) (precision, scale int64, ok bool) {
-	return int64(rows.stmt.resultXsqlda[index].displayLength()), int64(rows.stmt.resultXsqlda[index].sqlscale), rows.stmt.resultXsqlda[index].hasPrecisionScale()
+	x := rows.stmt.resultXsqlda[index]
+	scale = int64(x.sqlscale)
+	if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames && scale < 0 {
+		scale = -scale
+	}
+	return int64(x.displayLength()), scale, x.hasPrecisionScale()
 }
 
 func (rows *firebirdsqlRows) ColumnTypeScanType(index int) reflect.Type {
-	return rows.stmt.resultXsqlda[index].scantype()
+	x := rows.stmt.resultXsqlda[index]
+	if rows.stmt.fc != nil && rows.stmt.fc.sqlTypeNames {
+		return x.sqlScanType()
+	}
+	return x.scantype()
+}
+
+func (rows *firebirdsqlRows) sqlTypeNamesValue(x xSQLVAR, value driver.Value) (driver.Value, error) {
+	fc := rows.stmt.fc
+	if fc == nil || !fc.sqlTypeNames || fc.wp == nil || !strings.EqualFold(fc.wp.charset, "NONE") || x.sqlsubtype == 1 {
+		return value, nil
+	}
+	if x.sqltype != SQL_TYPE_TEXT && x.sqltype != SQL_TYPE_VARYING {
+		return value, nil
+	}
+	if value == nil {
+		return nil, nil
+	}
+	var raw []byte
+	switch v := value.(type) {
+	case []byte:
+		raw = v
+	case string:
+		raw = []byte(v)
+	default:
+		return value, nil
+	}
+	decoded, err := x.valueSQLTypeNames(raw, fc.wp.timezone, fc.wp.charset)
+	if err != nil {
+		return nil, err
+	}
+	return decoded, nil
 }

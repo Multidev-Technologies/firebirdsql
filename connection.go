@@ -38,6 +38,7 @@ type firebirdsqlConn struct {
 	tx                 *firebirdsqlTx
 	dsn                *firebirdDsn
 	columnNameToLower  bool
+	sqlTypeNames       bool
 	isAutocommit       bool
 	explicitTxOnly     bool
 	txNoWait           bool
@@ -287,6 +288,7 @@ func openFirebirdsqlConnWithWire(dsn *firebirdDsn, dbOp func(*wireProtocol) erro
 
 func handshakeFirebirdsqlConn(wp *wireProtocol, dsn *firebirdDsn, dbOp func(*wireProtocol) error) (*firebirdsqlConn, error) {
 	columnNameToLower := convertToBool(dsn.options["column_name_to_lower"], false)
+	sqlTypeNames := convertToBool(dsn.options["sql_type_names"], false)
 	explicitTxOnly := convertToBool(dsn.options["explicit_tx_only"], false)
 	txNoWait := convertToBool(dsn.options["tx_nowait"], false)
 	clientPublic, clientSecret, err := getClientSeed()
@@ -323,6 +325,7 @@ func handshakeFirebirdsqlConn(wp *wireProtocol, dsn *firebirdDsn, dbOp func(*wir
 		wp:                wp,
 		dsn:               dsn,
 		columnNameToLower: columnNameToLower,
+		sqlTypeNames:      sqlTypeNames,
 		isAutocommit:      !explicitTxOnly,
 		explicitTxOnly:    explicitTxOnly,
 		txNoWait:          txNoWait,
