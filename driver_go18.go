@@ -52,7 +52,7 @@ func (stmt *firebirdsqlStmt) QueryContext(ctx context.Context, namedargs []drive
 }
 
 func (fc *firebirdsqlConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
-	isolationLevel, err := txIsolationLevel(opts)
+	isolationLevel, err := txIsolationLevelWith(opts, fc.txNoWait)
 	if err != nil {
 		return nil, err
 	}
@@ -70,23 +70,36 @@ func (fc *firebirdsqlConn) BeginTx(ctx context.Context, opts driver.TxOptions) (
 }
 
 func txIsolationLevel(opts driver.TxOptions) (int, error) {
+	return txIsolationLevelWith(opts, false)
+}
+
+func txIsolationLevelWith(opts driver.TxOptions, noWait bool) (int, error) {
+	level := sql.IsolationLevel(opts.Isolation)
+	snapshot := level == sql.LevelSnapshot || level == sql.LevelRepeatableRead || level == LevelSnapshotNoWait
+	noWait = noWait || level == LevelReadCommittedNoWait || level == LevelSnapshotNoWait
 	if opts.ReadOnly {
-		// Preserve existing behaviour: readonly always uses READ COMMITTED RO.
-		// The only extra knob we currently support here is NOWAIT.
-		if (sql.IsolationLevel)(opts.Isolation) == LevelReadCommittedNoWait {
+		switch {
+		case snapshot && noWait:
+			return ISOLATION_LEVEL_SNAPSHOT_RO_NOWAIT, nil
+		case snapshot:
+			return ISOLATION_LEVEL_SNAPSHOT_RO, nil
+		case noWait:
 			return ISOLATION_LEVEL_READ_COMMITED_RO_NOWAIT, nil
+		default:
+			return ISOLATION_LEVEL_READ_COMMITED_RO, nil
 		}
-		return ISOLATION_LEVEL_READ_COMMITED_RO, nil
 	}
 
-	switch (sql.IsolationLevel)(opts.Isolation) {
-	case sql.LevelDefault:
+	switch level {
+	case sql.LevelDefault, sql.LevelReadCommitted, LevelReadCommittedNoWait:
+		if noWait {
+			return ISOLATION_LEVEL_READ_COMMITED_NOWAIT, nil
+		}
 		return ISOLATION_LEVEL_READ_COMMITED, nil
-	case sql.LevelReadCommitted:
-		return ISOLATION_LEVEL_READ_COMMITED, nil
-	case LevelReadCommittedNoWait:
-		return ISOLATION_LEVEL_READ_COMMITED_NOWAIT, nil
-	case sql.LevelRepeatableRead:
+	case sql.LevelSnapshot, sql.LevelRepeatableRead, LevelSnapshotNoWait:
+		if noWait {
+			return ISOLATION_LEVEL_SNAPSHOT_NOWAIT, nil
+		}
 		return ISOLATION_LEVEL_REPEATABLE_READ, nil
 	case sql.LevelSerializable:
 		return ISOLATION_LEVEL_SERIALIZABLE, nil

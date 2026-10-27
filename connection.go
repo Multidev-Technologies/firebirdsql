@@ -39,6 +39,8 @@ type firebirdsqlConn struct {
 	dsn                *firebirdDsn
 	columnNameToLower  bool
 	isAutocommit       bool
+	explicitTxOnly     bool
+	txNoWait           bool
 	clientPublic       *big.Int
 	clientSecret       *big.Int
 	transactionSet     map[*firebirdsqlTx]struct{}
@@ -193,6 +195,9 @@ func (fc *firebirdsqlConn) prepare(ctx context.Context, query string) (driver.St
 	if fc.tx == nil {
 		return nil, driver.ErrBadConn
 	}
+	if fc.explicitTxOnly && fc.tx.needBegin {
+		return nil, ErrImplicitTransaction
+	}
 	var stmt *firebirdsqlStmt
 	err := fc.wp.withContextDeadline(ctx, func() error {
 		if fc.tx.needBegin {
@@ -282,6 +287,8 @@ func openFirebirdsqlConnWithWire(dsn *firebirdDsn, dbOp func(*wireProtocol) erro
 
 func handshakeFirebirdsqlConn(wp *wireProtocol, dsn *firebirdDsn, dbOp func(*wireProtocol) error) (*firebirdsqlConn, error) {
 	columnNameToLower := convertToBool(dsn.options["column_name_to_lower"], false)
+	explicitTxOnly := convertToBool(dsn.options["explicit_tx_only"], false)
+	txNoWait := convertToBool(dsn.options["tx_nowait"], false)
 	clientPublic, clientSecret, err := getClientSeed()
 	if err != nil {
 		return nil, err
@@ -316,7 +323,9 @@ func handshakeFirebirdsqlConn(wp *wireProtocol, dsn *firebirdDsn, dbOp func(*wir
 		wp:                wp,
 		dsn:               dsn,
 		columnNameToLower: columnNameToLower,
-		isAutocommit:      true,
+		isAutocommit:      !explicitTxOnly,
+		explicitTxOnly:    explicitTxOnly,
+		txNoWait:          txNoWait,
 		clientPublic:      clientPublic,
 		clientSecret:      clientSecret,
 	}

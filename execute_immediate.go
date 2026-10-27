@@ -35,6 +35,9 @@ func (fc *firebirdsqlConn) ExecImmediate(ctx context.Context, sql string) error 
 	if fc == nil || fc.wp == nil || fc.tx == nil {
 		return driver.ErrBadConn
 	}
+	if fc.explicitTxOnly && fc.tx.needBegin {
+		return ErrImplicitTransaction
+	}
 	if fc.tx.needBegin {
 		if err := fc.tx.begin(); err != nil {
 			return err

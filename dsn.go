@@ -91,12 +91,14 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 		"charset":              "UTF8",
 		"client_version":       "",
 		"column_name_to_lower": "false",
+		"explicit_tx_only":     "false",
 		"host_name":            "",
 		"os_user":              "",
 		"page_size":            "4096",
 		"role":                 "",
 		"sql_dialect":          "3",
 		"timezone":             "",
+		"tx_nowait":            "false",
 		"wire_crypt":           "true",
 		"wire_crypt_plugin":    defaultWireCryptPlugins,
 		"wire_compress":        "false",
@@ -132,6 +134,11 @@ func parseDSN(dsns string) (*firebirdDsn, error) {
 	}
 	if v := dsn.options["sql_dialect"]; v != "1" && v != "3" {
 		return nil, fmt.Errorf("firebirdsql: sql_dialect must be 1 or 3, got %q", v)
+	}
+	for _, key := range []string{"explicit_tx_only", "tx_nowait"} {
+		if v := dsn.options[key]; v != "true" && v != "false" {
+			return nil, fmt.Errorf("firebirdsql: %s must be true or false, got %q", key, v)
+		}
 	}
 
 	// Fail fast on an invalid wire_crypt policy before dialing.

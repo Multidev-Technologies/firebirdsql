@@ -206,6 +206,9 @@ func (stmt *firebirdsqlStmt) ensureInputXsqlda(args []driver.Value) error {
 // re-prepare of a freed handle, bind metadata) bounded by ctx. It returns the
 // statement to execute, which is a new one when the handle had been freed.
 func (stmt *firebirdsqlStmt) prepareExecute(ctx context.Context, args []driver.Value) (*firebirdsqlStmt, error) {
+	if stmt.fc.explicitTxOnly && stmt.fc.tx.needBegin {
+		return nil, ErrImplicitTransaction
+	}
 	err := stmt.fc.wp.withContextDeadline(ctx, func() error {
 		if stmt.fc.tx.needBegin {
 			if err := stmt.fc.tx.begin(); err != nil {

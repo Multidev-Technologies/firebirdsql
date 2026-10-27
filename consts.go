@@ -640,6 +640,9 @@ const (
 	// NOWAIT variants (lock conflicts return immediately instead of waiting)
 	ISOLATION_LEVEL_READ_COMMITED_NOWAIT
 	ISOLATION_LEVEL_READ_COMMITED_RO_NOWAIT
+	ISOLATION_LEVEL_SNAPSHOT_RO
+	ISOLATION_LEVEL_SNAPSHOT_RO_NOWAIT
+	ISOLATION_LEVEL_SNAPSHOT_NOWAIT
 )
 
 // Driver-specific transaction isolation levels for database/sql.
@@ -649,6 +652,8 @@ const (
 const (
 	// LevelReadCommittedNoWait starts a READ COMMITTED transaction with NOWAIT lock resolution.
 	LevelReadCommittedNoWait = 1000
+	// LevelSnapshotNoWait starts a SNAPSHOT transaction with NOWAIT lock resolution.
+	LevelSnapshotNoWait = 1001
 )
 
 // Event

@@ -99,6 +99,9 @@ func (fc *firebirdsqlConn) PrepareBatch(ctx context.Context, sql string, opts Ba
 	if fc == nil || fc.wp == nil {
 		return nil, driver.ErrBadConn
 	}
+	if fc.explicitTxOnly && fc.tx.needBegin {
+		return nil, ErrImplicitTransaction
+	}
 	if fc.wp.protocolVersion < PROTOCOL_VERSION16 {
 		return nil, fmt.Errorf("firebirdsql: batch requires wire protocol 16+, got %d", fc.wp.protocolVersion)
 	}

@@ -55,6 +55,9 @@ type ScrollableStmt struct {
 //	    return e
 //	})
 func (fc *firebirdsqlConn) QueryScrollable(ctx context.Context, query string, args ...driver.Value) (*ScrollableStmt, error) {
+	if fc.explicitTxOnly && fc.tx.needBegin {
+		return nil, ErrImplicitTransaction
+	}
 	if fc.wp.protocolVersion < PROTOCOL_VERSION18 {
 		return nil, fmt.Errorf("firebirdsql: scrollable cursors require wire protocol 18+, got %d", fc.wp.protocolVersion)
 	}

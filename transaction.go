@@ -94,6 +94,12 @@ func tpbForIsolationLevel(isolationLevel int) ([]byte, error) {
 			byte(isc_tpb_read_committed),
 			byte(isc_tpb_rec_version),
 		}, nil
+	case ISOLATION_LEVEL_SNAPSHOT_RO:
+		return []byte{byte(isc_tpb_version3), byte(isc_tpb_read), byte(isc_tpb_wait), byte(isc_tpb_concurrency)}, nil
+	case ISOLATION_LEVEL_SNAPSHOT_RO_NOWAIT:
+		return []byte{byte(isc_tpb_version3), byte(isc_tpb_read), byte(isc_tpb_nowait), byte(isc_tpb_concurrency)}, nil
+	case ISOLATION_LEVEL_SNAPSHOT_NOWAIT:
+		return []byte{byte(isc_tpb_version3), byte(isc_tpb_write), byte(isc_tpb_nowait), byte(isc_tpb_concurrency)}, nil
 	default:
 		return nil, ErrInvalidIsolationLevel
 	}
